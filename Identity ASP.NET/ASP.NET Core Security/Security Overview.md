@@ -60,7 +60,177 @@ To handle this process effectively, we can employ various software design patter
 
 ### Security Context
 
-What is actually the security context ?
+The security context encompasses all the pertinent information related to a user for security purposes, which includes:
 
-The security context contains all the information that the user has for security purpose.
+- **User Information:**
+  - User name
+  - User email
+  - Other relevant data
+
+These details are encapsulated within a single object known as a claims principle. Conceptually, we can perceive this principle as representing the user. Within the principle, there exists one or more identities associated with the user. Delving deeper, identities are comprised of multiple claims. Claims, essentially, are key-value pairs that convey specific user information.
+
+![[Screenshot 2024-04-03 at 11.48.13.png]]
+
+### Anonymous identity
+
+Come back to the first diagram:
+
+![[Screenshot 2024-04-03 at 10.36.14.png]]
+
+We can investigate each and every single step.
+
+Let's examine login page to verify the credentials.
+
+Regardless whether you're logged in or not, you have a security context, you have a primary identity.
+
+### Creating login page
+
+We are going to create a login page so that we can have a login identity instead  of anonymous one.
+
+```cs
+@page  
+@model WebApp_UnderTheHood.Pages.Account.Login  
+  
+@{  
+}  
+  
+<div class="container border" style="padding: 20px">  
+    <form method="post">  
+        <div class="text-danger" asp-validation-summary="All"></div>  
+        <div class="mb-3 row">  
+            <div class="col-2">  
+                <label asp-for="Credential.UserName"></label>  
+            </div>            <div class="col-5">  
+                <input type="text" asp-for="Credential.UserName" class="form-control"/>  
+                <span class="text-danger" asp-validation-for="Credential.UserName"></span>  
+            </div>        </div>        <div class="mb-3 row">  
+            <div class="col-2">  
+                <label asp-for="Credential.Password"></label>  
+            </div>            <div class="col-5">  
+                <input type="password" asp-for="Credential.Password" class="form-control"/>  
+                <span class="text-danger" asp-validation-for="Credential.Password"></span>  
+            </div>        </div>        <div class="mb-3 row">  
+            <div class="col-2">  
+                <input type="submit" class="btn btn-primary" value="login"/>  
+            </div>            <div class="col-5">  
+            </div>        </div>    </form>  
+</div>
+```
+
+```cs
+using System.ComponentModel.DataAnnotations;  
+using Microsoft.AspNetCore.Mvc;  
+using Microsoft.AspNetCore.Mvc.RazorPages;  
+  
+namespace WebApp_UnderTheHood.Pages.Account;  
+  
+public class Login : PageModel  
+{  
+    [BindProperty]  
+    public Credential Credential { get; set; } = new Credential();  
+    public void OnGet()  
+    {  
+          
+    }  
+  
+    public void OnPost()  
+    {  
+          
+    }  
+}  
+  
+public class Credential  
+{  
+    [Required]  
+    [Display(Name = "User Name")]  
+    public string UserName { get; set; } = string.Empty;  
+    [Required]  
+    [DataType(DataType.Password)]  
+    public string Password { get; set; } = string.Empty;  
+}
+```
+
+
+The security context is stored in the class Credential.
+
+Using the debugger, if we put a breakpoint on `OnPost` and try to display the credential data after passing user name and password on the login page we have :
+
+```cs
+  this.Credential
+  {WebApp_UnderTheHood.Pages.Account.Credential}
+    Password: "test"
+    UserName: "admin"
+```
+
+### Generate Cookie with Cookie Authentication Handler
+
+Now we are ready to verify Credential to generate the security context.
+
+First we verify if we have a credential
+```cs
+public async Task<IActionResult> OnPostAsync()  
+{  
+    //It return the view   
+if (!ModelState.IsValid) return Page();  
+      
+    //verify the credential  
+    if (Credential.UserName == "admin" && Credential.Password == "admin")  
+    {  
+        //Creating the security context  
+        List<Claim> claims = new List<Claim>  
+        {  
+            new Claim(ClaimTypes.Name, "admin"),  
+            new Claim(ClaimTypes.Email, "admin@mywebsite.com")  
+        };  
+        //Claims in Identity  
+        ClaimsIdentity identity = new ClaimsIdentity(claims, "MyCookieAuth");  
+        //Identity in Principal  
+        ClaimsPrincipal claimsPrincipal = new ClaimsPrincipal(identity);  
+        //Now we can encrypt and serialize the security context and store it as a cookie  
+        await HttpContext.SignInAsync(  
+           "MyCookieAuth", claimsPrincipal  
+        );    
+        return RedirectToPage("/Index");  
+    }  
+  
+    return Page();  
+}
+```
+
+```cs
+var builder = WebApplication.CreateBuilder(args);  
+  
+// Add services to the container.  
+builder.Services.AddRazorPages();
+//We add Authentication services with the authentication scheme
+builder.Services.AddAuthentication().AddCookie("MyCookieAuth", options =>  
+{  
+    options.Cookie.Name = "MyCookieAuth";  
+});  
+  
+var app = builder.Build();  
+  
+// Configure the HTTP request pipeline.  
+if (!app.Environment.IsDevelopment())  
+{  
+    app.UseExceptionHandler("/Error");  
+    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.  
+    app.UseHsts();  
+}  
+  
+app.UseHttpsRedirection();  
+  
+app.UseStaticFiles();  
+  
+app.UseRouting();  
+  
+app.UseAuthorization();  
+  
+app.MapRazorPages();  
+  
+app.Run();
+```
+
+
+### Read Cookie with Authentication Middleware
 
